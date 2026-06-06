@@ -1,4 +1,4 @@
-name: Update branches
+name: Update
 on:
   schedule:
     - cron: '0 7 * * *'
@@ -8,18 +8,26 @@ permissions:
 concurrency:
   group: update
   cancel-in-progress: false
-env:
-  MINIMUM_TRACKING_VERSION: "0.3.79"
 jobs:
   update:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
       - uses: DeterminateSystems/nix-installer-action@main
-      - name: Orchestrate per-version branches
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: nix run .#update-branches
+      - name: Bump nixpkgs to latest unstable
+        run: nix flake update
+      - name: Bump version and re-validate hash
+        run: nix run .#update-version
+      - name: Commit and push if anything changed
+        run: |
+          git add flake.lock pin.nix
+          if git diff --cached --quiet; then
+            echo "No changes."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "auto: update version / nixpkgs"
+          git push
